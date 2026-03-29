@@ -285,10 +285,6 @@
               "format": "email",
               "description": "Support email address"
             },
-            "NEXT_PUBLIC_WORKFLOW_SIDEBAR_HIDDEN_ITEMS": {
-              "type": "string",
-              "description": "Comma-separated workflow sidebar item ids to hide"
-            },
             "NEXT_PUBLIC_SETTINGS_NAV_HIDDEN_ITEMS": {
               "type": "string",
               "description": "Comma-separated settings navigation item ids to hide"

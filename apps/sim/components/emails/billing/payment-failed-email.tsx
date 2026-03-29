@@ -97,15 +97,10 @@ export function PaymentFailedEmail({
       <div style={baseStyles.divider} />
 
       <Text style={{ ...baseStyles.footerText, textAlign: 'left' }}>
-        Common issues: expired card, insufficient funds, or incorrect billing info.
-        {brand.supportEmail ? (
-          <>
-            {' '}Need help?{' '}
-            <Link href={`mailto:${brand.supportEmail}`} style={baseStyles.link}>
-              {brand.supportEmail}
-            </Link>
-          </>
-        ) : null}
+        Common issues: expired card, insufficient funds, or incorrect billing info. Need help?{' '}
+        <Link href={`mailto:${brand.supportEmail}`} style={baseStyles.link}>
+          {brand.supportEmail}
+        </Link>
       </Text>
     </EmailLayout>
   )

@@ -142,30 +142,26 @@ export function EmailFooter({
             )}
 
             {/* Contact row */}
-            {brand.supportEmail && (
-              <>
-                <tr>
-                  <td style={baseStyles.gutter} width={spacing.gutter}>
-                    &nbsp;
-                  </td>
-                  <td style={baseStyles.footerText}>
-                    Questions?{' '}
-                    <a href={`mailto:${brand.supportEmail}`} style={footerLinkStyle}>
-                      {brand.supportEmail}
-                    </a>
-                  </td>
-                  <td style={baseStyles.gutter} width={spacing.gutter}>
-                    &nbsp;
-                  </td>
-                </tr>
+            <tr>
+              <td style={baseStyles.gutter} width={spacing.gutter}>
+                &nbsp;
+              </td>
+              <td style={baseStyles.footerText}>
+                Questions?{' '}
+                <a href={`mailto:${brand.supportEmail}`} style={footerLinkStyle}>
+                  {brand.supportEmail}
+                </a>
+              </td>
+              <td style={baseStyles.gutter} width={spacing.gutter}>
+                &nbsp;
+              </td>
+            </tr>
 
-                <tr>
-                  <td style={baseStyles.spacer} height={8}>
-                    &nbsp;
-                  </td>
-                </tr>
-              </>
-            )}
+            <tr>
+              <td style={baseStyles.spacer} height={8}>
+                &nbsp;
+              </td>
+            </tr>
 
             {/* Message ID row (optional) */}
             {messageId && (

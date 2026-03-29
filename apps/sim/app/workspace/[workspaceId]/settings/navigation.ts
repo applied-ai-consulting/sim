@@ -17,7 +17,6 @@ import {
   Wrench,
 } from '@/components/emcn'
 import { AgentSkillsIcon, McpIcon } from '@/components/icons'
-import { getBrandConfig } from '@/ee/whitelabeling'
 import { getEnv, isTruthy } from '@/lib/core/config/env'
 
 export type SettingsSection =
@@ -172,9 +171,19 @@ export const allNavigationItems: NavigationItem[] = [
   },
 ]
 
-const hiddenSettingsNavigationItems = new Set(
-  getBrandConfig().settingsNavigationHiddenItemIds ?? []
-)
+function parseCsvList(value: string | undefined | null): string[] {
+  if (!value) return []
+  return [
+    ...new Set(
+      value
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+    ),
+  ]
+}
+
+const hiddenSettingsNavigationItems = new Set(parseCsvList(getEnv('NEXT_PUBLIC_SETTINGS_NAV_HIDDEN_ITEMS')))
 
 export const visibleNavigationItems = allNavigationItems.filter(
   (item) => !hiddenSettingsNavigationItems.has(item.id)

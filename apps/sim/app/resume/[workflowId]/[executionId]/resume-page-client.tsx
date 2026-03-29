@@ -1275,14 +1275,10 @@ export default function ResumeExecutionPage({
             color: 'var(--text-muted)',
           }}
         >
-          {brandConfig.supportEmail ? (
-            <>
-              Need help?{' '}
-              <a href={`mailto:${brandConfig.supportEmail}`} style={{ color: 'var(--text-secondary)' }}>
-                Contact support
-              </a>
-            </>
-          ) : null}
+          Need help?{' '}
+          <a href={`mailto:${brandConfig.supportEmail}`} style={{ color: 'var(--text-secondary)' }}>
+            Contact support
+          </a>
         </div>
       </div>
     </Tooltip.Provider>
