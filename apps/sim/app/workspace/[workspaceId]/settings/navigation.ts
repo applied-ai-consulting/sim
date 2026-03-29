@@ -17,6 +17,7 @@ import {
   Wrench,
 } from '@/components/emcn'
 import { AgentSkillsIcon, McpIcon } from '@/components/icons'
+import { getBrandConfig } from '@/ee/whitelabeling'
 import { getEnv, isTruthy } from '@/lib/core/config/env'
 
 export type SettingsSection =
@@ -170,3 +171,11 @@ export const allNavigationItems: NavigationItem[] = [
     requiresAdminRole: true,
   },
 ]
+
+const hiddenSettingsNavigationItems = new Set(
+  getBrandConfig().settingsNavigationHiddenItemIds ?? []
+)
+
+export const visibleNavigationItems = allNavigationItems.filter(
+  (item) => !hiddenSettingsNavigationItems.has(item.id)
+)

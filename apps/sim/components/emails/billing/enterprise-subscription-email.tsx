@@ -42,10 +42,16 @@ export function EnterpriseSubscriptionEmail({
       <div style={baseStyles.divider} />
 
       <Text style={{ ...baseStyles.footerText, textAlign: 'left' }}>
-        Questions? Reply to this email or contact us at{' '}
-        <Link href={`mailto:${brand.supportEmail}`} style={baseStyles.link}>
-          {brand.supportEmail}
-        </Link>
+        {brand.supportEmail ? (
+          <>
+            Questions? Reply to this email or contact us at{' '}
+            <Link href={`mailto:${brand.supportEmail}`} style={baseStyles.link}>
+              {brand.supportEmail}
+            </Link>
+          </>
+        ) : (
+          'Questions? Reply to this email.'
+        )}
       </Text>
     </EmailLayout>
   )

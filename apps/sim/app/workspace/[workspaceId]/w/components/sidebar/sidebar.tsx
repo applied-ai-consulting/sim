@@ -299,6 +299,10 @@ export const Sidebar = memo(function Sidebar() {
   const { canEdit } = useUserPermissionsContext()
   const { config: permissionConfig, filterBlocks } = usePermissionConfig()
   const { navigateToSettings, getSettingsHref } = useSettingsNavigation()
+  const hiddenSidebarItemIds = useMemo(
+    () => new Set(brand.workflowSidebarHiddenItemIds ?? []),
+    [brand.workflowSidebarHiddenItemIds]
+  )
   const initializeSearchData = useSearchModalStore((state) => state.initializeData)
 
   useEffect(() => {
@@ -639,21 +643,22 @@ export const Sidebar = memo(function Sidebar() {
   )
 
   const topNavItems = useMemo(
-    () => [
-      {
-        id: 'home',
-        label: 'Home',
-        icon: Home,
-        href: `/workspace/${workspaceId}/home`,
-      },
-      {
-        id: 'search',
-        label: 'Search',
-        icon: Search,
-        onClick: openSearchModal,
-      },
-    ],
-    [workspaceId, openSearchModal]
+    () =>
+      [
+        {
+          id: 'home',
+          label: 'Home',
+          icon: Home,
+          href: `/workspace/${workspaceId}/home`,
+        },
+        {
+          id: 'search',
+          label: 'Search',
+          icon: Search,
+          onClick: openSearchModal,
+        },
+      ].filter((item) => !hiddenSidebarItemIds.has(item.id)),
+    [workspaceId, openSearchModal, hiddenSidebarItemIds]
   )
 
   const workspaceNavItems = useMemo(
@@ -692,31 +697,35 @@ export const Sidebar = memo(function Sidebar() {
           icon: Library,
           href: `/workspace/${workspaceId}/logs`,
         },
-      ].filter((item) => !item.hidden),
+      ].filter((item) => !item.hidden && !hiddenSidebarItemIds.has(item.id)),
     [
       workspaceId,
       permissionConfig.hideKnowledgeBaseTab,
       permissionConfig.hideTablesTab,
       permissionConfig.hideFilesTab,
+      hiddenSidebarItemIds,
     ]
   )
 
   const footerItems = useMemo(
-    () => [
-      {
-        id: 'settings',
-        label: 'Settings',
-        icon: Settings,
-        href: getSettingsHref(),
-        onClick: () => {
-          if (!isCollapsed) {
-            setSidebarWidth(SIDEBAR_WIDTH.MIN)
-          }
-          navigateToSettings()
-        },
-      },
-    ],
-    [workspaceId, navigateToSettings, getSettingsHref, isCollapsed, setSidebarWidth]
+    () =>
+      hiddenSidebarItemIds.has('settings')
+        ? []
+        : [
+            {
+              id: 'settings',
+              label: 'Settings',
+              icon: Settings,
+              href: getSettingsHref(),
+              onClick: () => {
+                if (!isCollapsed) {
+                  setSidebarWidth(SIDEBAR_WIDTH.MIN)
+                }
+                navigateToSettings()
+              },
+            },
+          ],
+    [workspaceId, navigateToSettings, getSettingsHref, isCollapsed, setSidebarWidth, hiddenSidebarItemIds]
   )
 
   const handleStartTour = useCallback(() => {

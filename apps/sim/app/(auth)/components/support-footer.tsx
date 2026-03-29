@@ -9,6 +9,10 @@ export interface SupportFooterProps {
 export function SupportFooter({ position = 'fixed' }: SupportFooterProps) {
   const brandConfig = useBrandConfig()
 
+  if (!brandConfig.supportEmail) {
+    return null
+  }
+
   return (
     <div
       className={`right-0 bottom-0 left-0 z-50 pb-8 text-center font-[340] text-[var(--landing-text-muted)] text-small leading-relaxed ${position}`}

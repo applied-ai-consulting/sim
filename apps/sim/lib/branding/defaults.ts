@@ -4,20 +4,22 @@ import type { BrandConfig } from './types'
  * Default brand configuration values
  */
 export const defaultBrandConfig: BrandConfig = {
-  name: 'Sim',
-  logoUrl: undefined,
-  faviconUrl: undefined,
+  name: 'OpsRabbit',
+  logoUrl: '/opsrabbit-brand-logo.png',
+  faviconUrl: '/opsrabbit-logo.png',
   customCssUrl: undefined,
-  supportEmail: 'help@sim.ai',
+  supportEmail: undefined,
   documentationUrl: undefined,
   termsUrl: undefined,
   privacyUrl: undefined,
+  workflowSidebarHiddenItemIds: [],
+  settingsNavigationHiddenItemIds: [],
   theme: {
-    primaryColor: '#701ffc',
-    primaryHoverColor: '#802fff',
-    accentColor: '#9d54ff',
-    accentHoverColor: '#a66fff',
-    backgroundColor: '#0c0c0c',
+    primaryColor: '#f97316',
+    primaryHoverColor: '#ea580c',
+    accentColor: '#0ea5e9',
+    accentHoverColor: '#0284c7',
+    backgroundColor: '#fcfcfd',
   },
   isWhitelabeled: false,
 }
