@@ -170,3 +170,21 @@ export const allNavigationItems: NavigationItem[] = [
     requiresAdminRole: true,
   },
 ]
+
+function parseCsvList(value: string | undefined | null): string[] {
+  if (!value) return []
+  return [
+    ...new Set(
+      value
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+    ),
+  ]
+}
+
+const hiddenSettingsNavigationItems = new Set(parseCsvList(getEnv('NEXT_PUBLIC_SETTINGS_NAV_HIDDEN_ITEMS')))
+
+export const visibleNavigationItems = allNavigationItems.filter(
+  (item) => !hiddenSettingsNavigationItems.has(item.id)
+)

@@ -11,9 +11,9 @@ import { cn } from '@/lib/core/utils/cn'
 import { getUserRole } from '@/lib/workspaces/organization'
 import type { SettingsSection } from '@/app/workspace/[workspaceId]/settings/navigation'
 import {
-  allNavigationItems,
   isBillingEnabled,
   sectionConfig,
+  visibleNavigationItems,
 } from '@/app/workspace/[workspaceId]/settings/navigation'
 import { useSSOProviders } from '@/ee/sso/hooks/sso'
 import { prefetchWorkspaceCredentials } from '@/hooks/queries/credentials'
@@ -74,7 +74,7 @@ export function SettingsSidebar({
   }, [userId, ssoProvidersData?.providers, isLoadingSSO])
 
   const navigationItems = useMemo(() => {
-    return allNavigationItems.filter((item) => {
+    return visibleNavigationItems.filter((item) => {
       if (item.hideWhenBillingDisabled && !isBillingEnabled) {
         return false
       }

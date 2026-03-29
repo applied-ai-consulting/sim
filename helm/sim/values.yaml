@@ -168,6 +168,7 @@ app:
     NEXT_PUBLIC_BRAND_BACKGROUND_COLOR: ""                # Background color (hex, e.g., "#ffffff")
     NEXT_PUBLIC_CUSTOM_CSS_URL: ""                        # Custom stylesheet URL (leave empty for none)
     NEXT_PUBLIC_SUPPORT_EMAIL: "help@sim.ai"             # Support email address
+    NEXT_PUBLIC_SETTINGS_NAV_HIDDEN_ITEMS: ""            # Comma-separated settings navigation item ids to hide
     NEXT_PUBLIC_DOCUMENTATION_URL: ""                    # Documentation URL (leave empty for none)
     NEXT_PUBLIC_TERMS_URL: ""                            # Terms of service URL (leave empty for none)
     NEXT_PUBLIC_PRIVACY_URL: ""                          # Privacy policy URL (leave empty for none)
