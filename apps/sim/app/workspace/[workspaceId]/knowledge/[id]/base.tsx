@@ -5,6 +5,7 @@ import { createLogger } from '@sim/logger'
 import { format } from 'date-fns'
 import { AlertCircle, Loader2, Pencil, Plus, Tag, X } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
+import { usePostHog } from 'posthog-js/react'
 import {
   Badge,
   Button,
@@ -28,6 +29,7 @@ import { ALL_TAG_SLOTS, type AllTagSlot, getFieldTypeForSlot } from '@/lib/knowl
 import type { DocumentSortField, SortOrder } from '@/lib/knowledge/documents/types'
 import { type FilterFieldType, getOperatorsForFieldType } from '@/lib/knowledge/filters/types'
 import type { DocumentData } from '@/lib/knowledge/types'
+import { captureEvent } from '@/lib/posthog/client'
 import { formatFileSize } from '@/lib/uploads/utils/file-utils'
 import type {
   BreadcrumbItem,
@@ -62,7 +64,7 @@ import {
   type TagDefinition,
   useKnowledgeBaseTagDefinitions,
 } from '@/hooks/kb/use-knowledge-base-tag-definitions'
-import { useConnectorList } from '@/hooks/queries/kb/connectors'
+import { isConnectorSyncingOrPending, useConnectorList } from '@/hooks/queries/kb/connectors'
 import type { DocumentTagFilter } from '@/hooks/queries/kb/knowledge'
 import {
   useBulkDocumentOperation,
@@ -190,11 +192,20 @@ export function KnowledgeBase({
 }: KnowledgeBaseProps) {
   const params = useParams()
   const workspaceId = propWorkspaceId || (params.workspaceId as string)
+  const posthog = usePostHog()
+
+  useEffect(() => {
+    captureEvent(posthog, 'knowledge_base_opened', {
+      knowledge_base_id: id,
+      knowledge_base_name: passedKnowledgeBaseName ?? 'Unknown',
+    })
+  }, [id, passedKnowledgeBaseName, posthog])
+
   useOAuthReturnForKBConnectors(id)
   const { removeKnowledgeBase } = useKnowledgeBasesList(workspaceId, { enabled: false })
   const userPermissions = useUserPermissionsContext()
 
-  const { mutate: updateDocumentMutation } = useUpdateDocument()
+  const { mutate: updateDocumentMutation, mutateAsync: updateDocumentAsync } = useUpdateDocument()
   const { mutate: deleteDocumentMutation } = useDeleteDocument()
   const { mutate: deleteKnowledgeBaseMutation, isPending: isDeleting } =
     useDeleteKnowledgeBase(workspaceId)
@@ -208,7 +219,7 @@ export function KnowledgeBase({
 
   const [searchQuery, setSearchQuery] = useState('')
   const [showTagsModal, setShowTagsModal] = useState(false)
-  const [enabledFilter, setEnabledFilter] = useState<'all' | 'enabled' | 'disabled'>('all')
+  const [enabledFilter, setEnabledFilter] = useState<string[]>([])
   const [tagFilterEntries, setTagFilterEntries] = useState<
     {
       id: string
@@ -235,6 +246,17 @@ export function KnowledgeBase({
     [tagFilterEntries]
   )
 
+  const enabledFilterParam = useMemo<'all' | 'enabled' | 'disabled'>(() => {
+    if (enabledFilter.length === 1) return enabledFilter[0] as 'enabled' | 'disabled'
+    return 'all'
+  }, [enabledFilter])
+
+  const enabledDisplayLabel = useMemo(() => {
+    if (enabledFilter.length === 0) return 'All'
+    if (enabledFilter.length === 1) return enabledFilter[0] === 'enabled' ? 'Enabled' : 'Disabled'
+    return '2 selected'
+  }, [enabledFilter])
+
   const handleSearchChange = useCallback((newQuery: string) => {
     setSearchQuery(newQuery)
     setCurrentPage(1)
@@ -249,8 +271,10 @@ export function KnowledgeBase({
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
   const [showConnectorsModal, setShowConnectorsModal] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortBy, setSortBy] = useState<DocumentSortField>('uploadedAt')
-  const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
+  const [activeSort, setActiveSort] = useState<{
+    column: string
+    direction: 'asc' | 'desc'
+  } | null>(null)
   const [contextMenuDocument, setContextMenuDocument] = useState<DocumentData | null>(null)
   const [showRenameModal, setShowRenameModal] = useState(false)
   const [documentToRename, setDocumentToRename] = useState<DocumentData | null>(null)
@@ -272,7 +296,7 @@ export function KnowledgeBase({
   } = useKnowledgeBase(id)
 
   const { data: connectors = [], isLoading: isLoadingConnectors } = useConnectorList(id)
-  const hasSyncingConnectors = connectors.some((c) => c.status === 'syncing')
+  const hasSyncingConnectors = connectors.some(isConnectorSyncingOrPending)
   const hasSyncingConnectorsRef = useRef(hasSyncingConnectors)
   hasSyncingConnectorsRef.current = hasSyncingConnectors
 
@@ -290,8 +314,8 @@ export function KnowledgeBase({
     search: searchQuery || undefined,
     limit: DOCUMENTS_PER_PAGE,
     offset: (currentPage - 1) * DOCUMENTS_PER_PAGE,
-    sortBy,
-    sortOrder,
+    sortBy: (activeSort?.column ?? 'uploadedAt') as DocumentSortField,
+    sortOrder: (activeSort?.direction ?? 'desc') as SortOrder,
     refetchInterval: (data) => {
       if (isDeleting) return false
       const hasPending = data?.documents?.some(
@@ -301,7 +325,7 @@ export function KnowledgeBase({
       if (hasSyncingConnectorsRef.current) return 5000
       return false
     },
-    enabledFilter,
+    enabledFilter: enabledFilterParam,
     tagFilters: activeTagFilters.length > 0 ? activeTagFilters : undefined,
   })
 
@@ -442,28 +466,16 @@ export function KnowledgeBase({
 
     updateDocument(documentId, { filename: newName })
 
-    return new Promise<void>((resolve, reject) => {
-      updateDocumentMutation(
-        {
-          knowledgeBaseId: id,
-          documentId,
-          updates: { filename: newName },
-        },
-        {
-          onSuccess: () => {
-            logger.info(`Document renamed: ${documentId}`)
-            resolve()
-          },
-          onError: (err) => {
-            if (previousName !== undefined) {
-              updateDocument(documentId, { filename: previousName })
-            }
-            logger.error('Error renaming document:', err)
-            reject(err)
-          },
-        }
-      )
-    })
+    try {
+      await updateDocumentAsync({ knowledgeBaseId: id, documentId, updates: { filename: newName } })
+      logger.info(`Document renamed: ${documentId}`)
+    } catch (err) {
+      if (previousName !== undefined) {
+        updateDocument(documentId, { filename: previousName })
+      }
+      logger.error('Error renaming document:', err)
+      throw err
+    }
   }
 
   /**
@@ -571,7 +583,7 @@ export function KnowledgeBase({
           knowledgeBaseId: id,
           operation: 'enable',
           selectAll: true,
-          enabledFilter,
+          enabledFilter: enabledFilterParam,
         },
         {
           onSuccess: (result) => {
@@ -618,7 +630,7 @@ export function KnowledgeBase({
           knowledgeBaseId: id,
           operation: 'disable',
           selectAll: true,
-          enabledFilter,
+          enabledFilter: enabledFilterParam,
         },
         {
           onSuccess: (result) => {
@@ -667,7 +679,7 @@ export function KnowledgeBase({
           knowledgeBaseId: id,
           operation: 'delete',
           selectAll: true,
-          enabledFilter,
+          enabledFilter: enabledFilterParam,
         },
         {
           onSuccess: (result) => {
@@ -707,12 +719,12 @@ export function KnowledgeBase({
 
   const selectedDocumentsList = documents.filter((doc) => selectedDocuments.has(doc.id))
   const enabledCount = isSelectAllMode
-    ? enabledFilter === 'disabled'
+    ? enabledFilterParam === 'disabled'
       ? 0
       : pagination.total
     : selectedDocumentsList.filter((doc) => doc.enabled).length
   const disabledCount = isSelectAllMode
-    ? enabledFilter === 'enabled'
+    ? enabledFilterParam === 'enabled'
       ? 0
       : pagination.total
     : selectedDocumentsList.filter((doc) => !doc.enabled).length
@@ -795,59 +807,83 @@ export function KnowledgeBase({
       : []),
   ]
 
-  const sortConfig: SortConfig = {
-    options: [
-      { id: 'filename', label: 'Name' },
-      { id: 'fileSize', label: 'Size' },
-      { id: 'tokenCount', label: 'Tokens' },
-      { id: 'chunkCount', label: 'Chunks' },
-      { id: 'uploadedAt', label: 'Uploaded' },
-      { id: 'enabled', label: 'Status' },
-    ],
-    active: { column: sortBy, direction: sortOrder },
-    onSort: (column, direction) => {
-      setSortBy(column as DocumentSortField)
-      setSortOrder(direction)
-      setCurrentPage(1)
-    },
-  }
+  const sortConfig: SortConfig = useMemo(
+    () => ({
+      options: [
+        { id: 'filename', label: 'Name' },
+        { id: 'fileSize', label: 'Size' },
+        { id: 'tokenCount', label: 'Tokens' },
+        { id: 'chunkCount', label: 'Chunks' },
+        { id: 'uploadedAt', label: 'Uploaded' },
+        { id: 'enabled', label: 'Status' },
+      ],
+      active: activeSort,
+      onSort: (column, direction) => {
+        setActiveSort({ column, direction })
+        setCurrentPage(1)
+      },
+      onClear: () => {
+        setActiveSort(null)
+        setCurrentPage(1)
+      },
+    }),
+    [activeSort]
+  )
 
-  const filterContent = (
-    <div className='w-[320px]'>
-      <div className='border-[var(--border-1)] border-b px-3 py-2'>
-        <span className='font-medium text-[var(--text-secondary)] text-caption'>Status</span>
-      </div>
-      <div className='flex flex-col gap-0.5 px-3 py-2'>
-        {(['all', 'enabled', 'disabled'] as const).map((value) => (
-          <button
-            key={value}
-            type='button'
-            className={cn(
-              'flex w-full cursor-pointer select-none items-center rounded-[5px] px-2 py-[5px] font-medium text-[var(--text-secondary)] text-caption outline-none transition-colors hover-hover:bg-[var(--surface-active)]',
-              enabledFilter === value && 'bg-[var(--surface-active)]'
-            )}
-            onClick={() => {
-              setEnabledFilter(value)
+  const filterContent = useMemo(
+    () => (
+      <div className='flex w-[240px] flex-col gap-3 p-3'>
+        <div className='flex flex-col gap-1.5'>
+          <span className='font-medium text-[var(--text-secondary)] text-caption'>Status</span>
+          <Combobox
+            options={[
+              { value: 'enabled', label: 'Enabled' },
+              { value: 'disabled', label: 'Disabled' },
+            ]}
+            multiSelect
+            multiSelectValues={enabledFilter}
+            onMultiSelectChange={(values) => {
+              setEnabledFilter(values)
               setCurrentPage(1)
               setSelectedDocuments(new Set())
               setIsSelectAllMode(false)
             }}
+            overlayContent={
+              <span className='truncate text-[var(--text-primary)]'>{enabledDisplayLabel}</span>
+            }
+            showAllOption
+            allOptionLabel='All'
+            size='sm'
+            className='h-[32px] w-full rounded-md'
+          />
+        </div>
+        {enabledFilter.length > 0 && (
+          <button
+            type='button'
+            onClick={() => {
+              setEnabledFilter([])
+              setCurrentPage(1)
+              setSelectedDocuments(new Set())
+              setIsSelectAllMode(false)
+            }}
+            className='flex h-[32px] w-full items-center justify-center rounded-md text-[var(--text-secondary)] text-caption transition-colors hover-hover:bg-[var(--surface-active)]'
           >
-            {value.charAt(0).toUpperCase() + value.slice(1)}
+            Clear status filter
           </button>
-        ))}
+        )}
+        <TagFilterSection
+          tagDefinitions={tagDefinitions}
+          entries={tagFilterEntries}
+          onChange={(entries) => {
+            setTagFilterEntries(entries)
+            setCurrentPage(1)
+            setSelectedDocuments(new Set())
+            setIsSelectAllMode(false)
+          }}
+        />
       </div>
-      <TagFilterSection
-        tagDefinitions={tagDefinitions}
-        entries={tagFilterEntries}
-        onChange={(entries) => {
-          setTagFilterEntries(entries)
-          setCurrentPage(1)
-          setSelectedDocuments(new Set())
-          setIsSelectAllMode(false)
-        }}
-      />
-    </div>
+    ),
+    [enabledFilter, enabledDisplayLabel, tagDefinitions, tagFilterEntries]
   )
 
   const connectorBadges =
@@ -863,7 +899,11 @@ export function KnowledgeBase({
               onClick={() => setShowConnectorsModal(true)}
               className='flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[var(--text-secondary)] text-caption shadow-[inset_0_0_0_1px_var(--border)] transition-colors hover-hover:bg-[var(--surface-3)]'
             >
-              {ConnectorIcon && <ConnectorIcon className='h-[14px] w-[14px]' />}
+              {connector.status === 'syncing' ? (
+                <Loader2 className='h-[14px] w-[14px] animate-spin' />
+              ) : (
+                ConnectorIcon && <ConnectorIcon className='h-[14px] w-[14px]' />
+              )}
               {def?.name || connector.connectorType}
             </button>
           )
@@ -871,33 +911,39 @@ export function KnowledgeBase({
       </>
     ) : null
 
-  const filterTags: FilterTag[] = [
-    ...(enabledFilter !== 'all'
-      ? [
-          {
-            label: `Status: ${enabledFilter === 'enabled' ? 'Enabled' : 'Disabled'}`,
-            onRemove: () => {
-              setEnabledFilter('all')
-              setCurrentPage(1)
-              setSelectedDocuments(new Set())
-              setIsSelectAllMode(false)
+  const filterTags: FilterTag[] = useMemo(
+    () => [
+      ...(enabledFilter.length > 0
+        ? [
+            {
+              label:
+                enabledFilter.length === 1
+                  ? `Status: ${enabledFilter[0] === 'enabled' ? 'Enabled' : 'Disabled'}`
+                  : 'Status: 2 selected',
+              onRemove: () => {
+                setEnabledFilter([])
+                setCurrentPage(1)
+                setSelectedDocuments(new Set())
+                setIsSelectAllMode(false)
+              },
             },
+          ]
+        : []),
+      ...tagFilterEntries
+        .filter((f) => f.tagSlot && f.value.trim())
+        .map((f) => ({
+          label: `${f.tagName}: ${f.value}`,
+          onRemove: () => {
+            const updated = tagFilterEntries.filter((e) => e.id !== f.id)
+            setTagFilterEntries(updated)
+            setCurrentPage(1)
+            setSelectedDocuments(new Set())
+            setIsSelectAllMode(false)
           },
-        ]
-      : []),
-    ...tagFilterEntries
-      .filter((f) => f.tagSlot && f.value.trim())
-      .map((f) => ({
-        label: `${f.tagName}: ${f.value}`,
-        onRemove: () => {
-          const updated = tagFilterEntries.filter((_, idx) => idx !== tagFilterEntries.indexOf(f))
-          setTagFilterEntries(updated)
-          setCurrentPage(1)
-          setSelectedDocuments(new Set())
-          setIsSelectAllMode(false)
-        },
-      })),
-  ]
+        })),
+    ],
+    [enabledFilter, tagFilterEntries]
+  )
 
   const selectableConfig: SelectableConfig = {
     selectedIds: selectedDocuments,
@@ -922,7 +968,7 @@ export function KnowledgeBase({
                 content: (
                   <Tooltip.Root>
                     <Tooltip.Trigger asChild>
-                      <div style={{ cursor: 'help' }}>{getStatusBadge(doc)}</div>
+                      <div className='cursor-help'>{getStatusBadge(doc)}</div>
                     </Tooltip.Trigger>
                     <Tooltip.Content side='top' className='max-w-xs'>
                       {doc.processingError}
@@ -1019,7 +1065,7 @@ export function KnowledgeBase({
 
   const emptyMessage = searchQuery
     ? 'No documents found'
-    : enabledFilter !== 'all' || activeTagFilters.length > 0
+    : enabledFilter.length > 0 || activeTagFilters.length > 0
       ? 'Nothing matches your filter'
       : undefined
 

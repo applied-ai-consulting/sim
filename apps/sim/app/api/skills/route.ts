@@ -1,8 +1,10 @@
 import { createLogger } from '@sim/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { AuditAction, AuditResourceType, recordAudit } from '@/lib/audit/log'
 import { checkSessionOrInternalAuth } from '@/lib/auth/hybrid'
 import { generateRequestId } from '@/lib/core/utils/request'
+import { captureServerEvent } from '@/lib/posthog/server'
 import { deleteSkill, listSkills, upsertSkills } from '@/lib/workflows/skills/operations'
 import { getUserEntityPermissions } from '@/lib/workspaces/permissions/utils'
 
@@ -22,6 +24,7 @@ const SkillSchema = z.object({
     })
   ),
   workspaceId: z.string().optional(),
+  source: z.enum(['settings', 'tool_input']).optional(),
 })
 
 /** GET - Fetch all skills for a workspace */
@@ -74,7 +77,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
 
     try {
-      const { skills, workspaceId } = SkillSchema.parse(body)
+      const { skills, workspaceId, source } = SkillSchema.parse(body)
 
       if (!workspaceId) {
         logger.warn(`[${requestId}] Missing workspaceId in request body`)
@@ -95,6 +98,24 @@ export async function POST(req: NextRequest) {
         userId,
         requestId,
       })
+
+      for (const skill of resultSkills) {
+        recordAudit({
+          workspaceId,
+          actorId: userId,
+          action: AuditAction.SKILL_CREATED,
+          resourceType: AuditResourceType.SKILL,
+          resourceId: skill.id,
+          resourceName: skill.name,
+          description: `Created/updated skill "${skill.name}"`,
+        })
+        captureServerEvent(
+          userId,
+          'skill_created',
+          { skill_id: skill.id, skill_name: skill.name, workspace_id: workspaceId, source },
+          { groups: { workspace: workspaceId } }
+        )
+      }
 
       return NextResponse.json({ success: true, data: resultSkills })
     } catch (validationError) {
@@ -124,6 +145,9 @@ export async function DELETE(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const skillId = searchParams.get('id')
   const workspaceId = searchParams.get('workspaceId')
+  const sourceParam = searchParams.get('source')
+  const source =
+    sourceParam === 'settings' || sourceParam === 'tool_input' ? sourceParam : undefined
 
   try {
     const authResult = await checkSessionOrInternalAuth(request, { requireWorkflowId: false })
@@ -157,6 +181,22 @@ export async function DELETE(request: NextRequest) {
       logger.warn(`[${requestId}] Skill not found: ${skillId}`)
       return NextResponse.json({ error: 'Skill not found' }, { status: 404 })
     }
+
+    recordAudit({
+      workspaceId,
+      actorId: authResult.userId,
+      action: AuditAction.SKILL_DELETED,
+      resourceType: AuditResourceType.SKILL,
+      resourceId: skillId,
+      description: `Deleted skill`,
+    })
+
+    captureServerEvent(
+      userId,
+      'skill_deleted',
+      { skill_id: skillId, workspace_id: workspaceId, source },
+      { groups: { workspace: workspaceId } }
+    )
 
     logger.info(`[${requestId}] Deleted skill: ${skillId}`)
     return NextResponse.json({ success: true })

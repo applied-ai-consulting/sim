@@ -77,6 +77,7 @@ export interface SelectorContext {
   baseId?: string
   datasetId?: string
   serviceDeskId?: string
+  impersonateUserEmail?: string
 }
 
 export interface SelectorQueryArgs {
@@ -84,6 +85,7 @@ export interface SelectorQueryArgs {
   context: SelectorContext
   search?: string
   detailId?: string
+  signal?: AbortSignal
 }
 
 export interface SelectorDefinition {

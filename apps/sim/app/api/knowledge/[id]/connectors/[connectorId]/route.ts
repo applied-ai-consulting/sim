@@ -16,6 +16,7 @@ import { checkSessionOrInternalAuth } from '@/lib/auth/hybrid'
 import { generateRequestId } from '@/lib/core/utils/request'
 import { deleteDocumentStorageFiles } from '@/lib/knowledge/documents/service'
 import { cleanupUnusedTagDefinitions } from '@/lib/knowledge/tags/service'
+import { captureServerEvent } from '@/lib/posthog/server'
 import { refreshAccessTokenIfNeeded } from '@/app/api/auth/oauth/utils'
 import { checkKnowledgeBaseAccess, checkKnowledgeBaseWriteAccess } from '@/app/api/knowledge/utils'
 import { CONNECTOR_REGISTRY } from '@/connectors/registry'
@@ -292,7 +293,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Connector not found' }, { status: 404 })
     }
 
-    const connectorDocuments = await db.transaction(async (tx) => {
+    const { searchParams } = new URL(request.url)
+    const deleteDocuments = searchParams.get('deleteDocuments') === 'true'
+
+    const { deletedDocs, docCount } = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT 1 FROM knowledge_connector WHERE id = ${connectorId} FOR UPDATE`)
 
       const docs = await tx
@@ -306,10 +310,12 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
           )
         )
 
-      const documentIds = docs.map((doc) => doc.id)
-      if (documentIds.length > 0) {
-        await tx.delete(embedding).where(inArray(embedding.documentId, documentIds))
-        await tx.delete(document).where(inArray(document.id, documentIds))
+      if (deleteDocuments) {
+        const documentIds = docs.map((doc) => doc.id)
+        if (documentIds.length > 0) {
+          await tx.delete(embedding).where(inArray(embedding.documentId, documentIds))
+          await tx.delete(document).where(inArray(document.id, documentIds))
+        }
       }
 
       const deletedConnectors = await tx
@@ -328,16 +334,36 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
         throw new Error('Connector not found')
       }
 
-      return docs
+      return { deletedDocs: deleteDocuments ? docs : [], docCount: docs.length }
     })
 
-    await deleteDocumentStorageFiles(connectorDocuments, requestId)
+    if (deleteDocuments) {
+      await Promise.all([
+        deletedDocs.length > 0
+          ? deleteDocumentStorageFiles(deletedDocs, requestId)
+          : Promise.resolve(),
+        cleanupUnusedTagDefinitions(knowledgeBaseId, requestId).catch((error) => {
+          logger.warn(`[${requestId}] Failed to cleanup tag definitions`, error)
+        }),
+      ])
+    }
 
-    await cleanupUnusedTagDefinitions(knowledgeBaseId, requestId).catch((error) => {
-      logger.warn(`[${requestId}] Failed to cleanup tag definitions`, error)
-    })
+    logger.info(
+      `[${requestId}] Deleted connector ${connectorId}${deleteDocuments ? ` and ${docCount} documents` : `, kept ${docCount} documents`}`
+    )
 
-    logger.info(`[${requestId}] Hard-deleted connector ${connectorId} and its documents`)
+    const kbWorkspaceId = writeCheck.knowledgeBase.workspaceId ?? ''
+    captureServerEvent(
+      auth.userId,
+      'knowledge_base_connector_removed',
+      {
+        knowledge_base_id: knowledgeBaseId,
+        workspace_id: kbWorkspaceId,
+        connector_type: existingConnector[0].connectorType,
+        documents_deleted: deleteDocuments ? docCount : 0,
+      },
+      kbWorkspaceId ? { groups: { workspace: kbWorkspaceId } } : undefined
+    )
 
     recordAudit({
       workspaceId: writeCheck.knowledgeBase.workspaceId,
@@ -349,7 +375,11 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       resourceId: connectorId,
       resourceName: existingConnector[0].connectorType,
       description: `Deleted connector from knowledge base "${writeCheck.knowledgeBase.name}"`,
-      metadata: { knowledgeBaseId, documentsDeleted: connectorDocuments.length },
+      metadata: {
+        knowledgeBaseId,
+        documentsDeleted: deleteDocuments ? docCount : 0,
+        documentsKept: deleteDocuments ? 0 : docCount,
+      },
       request,
     })
 

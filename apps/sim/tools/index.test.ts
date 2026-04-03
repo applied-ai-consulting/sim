@@ -16,15 +16,28 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Hoisted mock state - these are available to vi.mock factories
-const { mockIsHosted, mockEnv, mockGetBYOKKey, mockRateLimiterFns } = vi.hoisted(() => ({
+const {
+  mockIsHosted,
+  mockEnv,
+  mockGetBYOKKey,
+  mockGetToolAsync,
+  mockRateLimiterFns,
+  mockGetCustomToolById,
+  mockListCustomTools,
+  mockGetCustomToolByIdOrTitle,
+} = vi.hoisted(() => ({
   mockIsHosted: { value: false },
   mockEnv: { NEXT_PUBLIC_APP_URL: 'http://localhost:3000' } as Record<string, string | undefined>,
   mockGetBYOKKey: vi.fn(),
+  mockGetToolAsync: vi.fn(),
   mockRateLimiterFns: {
     acquireKey: vi.fn(),
     preConsumeCapacity: vi.fn(),
     consumeCapacity: vi.fn(),
   },
+  mockGetCustomToolById: vi.fn(),
+  mockListCustomTools: vi.fn(),
+  mockGetCustomToolByIdOrTitle: vi.fn(),
 }))
 
 // Mock feature flags
@@ -176,27 +189,12 @@ vi.mock('@/tools/registry', () => {
       params: {},
       request: { url: '/api/tools/serper/search', method: 'GET' },
     },
-    'custom_custom-tool-123': {
-      id: 'custom_custom-tool-123',
-      name: 'Custom Weather Tool',
-      description: 'Get weather information',
-      version: '1.0.0',
-      params: {
-        location: { type: 'string', required: true, description: 'City name' },
-        unit: { type: 'string', required: false, description: 'Unit (metric/imperial)' },
-      },
-      request: {
-        url: '/api/function/execute',
-        method: 'POST',
-        headers: () => ({ 'Content-Type': 'application/json' }),
-      },
-    },
   }
   return { tools: mockTools }
 })
 
 // Mock custom tools - define mock data inside factory function
-vi.mock('@/hooks/queries/custom-tools', () => {
+vi.mock('@/hooks/queries/utils/custom-tool-cache', () => {
   const mockCustomTool = {
     id: 'custom-tool-123',
     title: 'Custom Weather Tool',
@@ -226,9 +224,25 @@ vi.mock('@/hooks/queries/custom-tools', () => {
   }
 })
 
-import { executeTool } from '@/tools'
+vi.mock('@/lib/workflows/custom-tools/operations', () => ({
+  getCustomToolById: mockGetCustomToolById,
+  listCustomTools: mockListCustomTools,
+  getCustomToolByIdOrTitle: mockGetCustomToolByIdOrTitle,
+}))
+
+vi.mock('@/tools/utils.server', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/tools/utils.server')>()
+  mockGetToolAsync.mockImplementation(actual.getToolAsync)
+  return {
+    ...actual,
+    getToolAsync: mockGetToolAsync,
+  }
+})
+
+import { executeTool, postProcessToolOutput } from '@/tools'
 import { tools } from '@/tools/registry'
 import { getTool } from '@/tools/utils'
+import { getToolAsync } from '@/tools/utils.server'
 
 /**
  * Sets up global fetch mock with Next.js preconnect support.
@@ -304,18 +318,38 @@ describe('Tools Registry', () => {
 })
 
 describe('Custom Tools', () => {
-  it('should get custom tool by ID', () => {
-    const customTool = getTool('custom_custom-tool-123')
-    expect(customTool).toBeDefined()
-    expect(customTool?.name).toBe('Custom Weather Tool')
-    expect(customTool?.description).toBe('Get weather information')
-    expect(customTool?.params.location).toBeDefined()
-    expect(customTool?.params.location.required).toBe(true)
+  it('does not resolve custom tools through the synchronous client helper', () => {
+    expect(getTool('custom_remote-tool-123', 'workspace-1')).toBeUndefined()
   })
 
-  it('should handle non-existent custom tool', () => {
-    const nonExistentTool = getTool('custom_non-existent')
-    expect(nonExistentTool).toBeUndefined()
+  it('resolves custom tools through the async helper', async () => {
+    mockGetCustomToolByIdOrTitle.mockResolvedValue({
+      id: 'remote-tool-123',
+      title: 'Custom Weather Tool',
+      schema: {
+        function: {
+          name: 'weather_tool',
+          description: 'Get weather information',
+          parameters: {
+            type: 'object',
+            properties: {
+              location: { type: 'string', description: 'City name' },
+            },
+            required: ['location'],
+          },
+        },
+      },
+      code: '',
+    })
+
+    const customTool = await getToolAsync('custom_remote-tool-123', {
+      workflowId: 'workflow-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+    })
+
+    expect(customTool?.name).toBe('Custom Weather Tool')
+    expect(customTool?.params.location.required).toBe(true)
   })
 })
 
@@ -1962,44 +1996,17 @@ describe('stripInternalFields Safety', () => {
   })
 
   it('should preserve __-prefixed fields in custom tool output', async () => {
-    const mockTool = {
-      id: 'custom_test-preserve-dunder',
-      name: 'Custom Preserve Dunder',
-      description: 'A custom tool whose output has __ fields',
-      version: '1.0.0',
-      params: {},
-      request: {
-        url: '/api/function/execute',
-        method: 'POST' as const,
-        headers: () => ({ 'Content-Type': 'application/json' }),
-      },
-      transformResponse: vi.fn().mockResolvedValue({
-        success: true,
-        output: { result: 'ok', __metadata: { source: 'user' }, __tag: 'important' },
-      }),
-    }
+    const output = postProcessToolOutput('custom_test-preserve-dunder', {
+      result: 'ok',
+      __metadata: { source: 'user' },
+      __tag: 'important',
+    })
 
-    const originalTools = { ...tools }
-    ;(tools as any)['custom_test-preserve-dunder'] = mockTool
-
-    global.fetch = Object.assign(
-      vi.fn().mockImplementation(async () => ({
-        ok: true,
-        status: 200,
-        headers: new Headers(),
-        json: () => Promise.resolve({ success: true }),
-      })),
-      { preconnect: vi.fn() }
-    ) as typeof fetch
-
-    const result = await executeTool('custom_test-preserve-dunder', {}, true)
-
-    expect(result.success).toBe(true)
-    expect(result.output.result).toBe('ok')
-    expect(result.output.__metadata).toEqual({ source: 'user' })
-    expect(result.output.__tag).toBe('important')
-
-    Object.assign(tools, originalTools)
+    expect(output).toEqual({
+      result: 'ok',
+      __metadata: { source: 'user' },
+      __tag: 'important',
+    })
   })
 })
 

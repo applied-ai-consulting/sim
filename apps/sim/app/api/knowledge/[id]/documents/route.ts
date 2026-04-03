@@ -16,6 +16,7 @@ import {
   type TagFilterCondition,
 } from '@/lib/knowledge/documents/service'
 import type { DocumentSortField, SortOrder } from '@/lib/knowledge/documents/types'
+import { captureServerEvent } from '@/lib/posthog/server'
 import { authorizeWorkflowByWorkspacePermission } from '@/lib/workflows/utils'
 import { checkKnowledgeBaseAccess, checkKnowledgeBaseWriteAccess } from '@/app/api/knowledge/utils'
 
@@ -38,26 +39,14 @@ const CreateDocumentSchema = z.object({
   documentTagsData: z.string().optional(),
 })
 
-/**
- * Schema for bulk document creation with processing options
- *
- * Processing options units:
- * - chunkSize: tokens (1 token ≈ 4 characters)
- * - minCharactersPerChunk: characters
- * - chunkOverlap: characters
- */
 const BulkCreateDocumentsSchema = z.object({
   documents: z.array(CreateDocumentSchema),
-  processingOptions: z.object({
-    /** Maximum chunk size in tokens (1 token ≈ 4 characters) */
-    chunkSize: z.number().min(100).max(4000),
-    /** Minimum chunk size in characters */
-    minCharactersPerChunk: z.number().min(1).max(2000),
-    recipe: z.string(),
-    lang: z.string(),
-    /** Overlap between chunks in characters */
-    chunkOverlap: z.number().min(0).max(500),
-  }),
+  processingOptions: z
+    .object({
+      recipe: z.string().optional(),
+      lang: z.string().optional(),
+    })
+    .optional(),
   bulk: z.literal(true),
 })
 
@@ -226,6 +215,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const kbWorkspaceId = accessCheck.knowledgeBase?.workspaceId
+
     if (body.bulk === true) {
       try {
         const validatedData = BulkCreateDocumentsSchema.parse(body)
@@ -246,17 +237,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             knowledgeBaseId,
             documentsCount: createdDocuments.length,
             uploadType: 'bulk',
-            chunkSize: validatedData.processingOptions.chunkSize,
-            recipe: validatedData.processingOptions.recipe,
+            recipe: validatedData.processingOptions?.recipe,
           })
         } catch (_e) {
           // Silently fail
         }
 
+        captureServerEvent(
+          userId,
+          'knowledge_base_document_uploaded',
+          {
+            knowledge_base_id: knowledgeBaseId,
+            workspace_id: kbWorkspaceId ?? '',
+            document_count: createdDocuments.length,
+            upload_type: 'bulk',
+          },
+          {
+            ...(kbWorkspaceId ? { groups: { workspace: kbWorkspaceId } } : {}),
+            setOnce: { first_document_uploaded_at: new Date().toISOString() },
+          }
+        )
+
         processDocumentsWithQueue(
           createdDocuments,
           knowledgeBaseId,
-          validatedData.processingOptions,
+          validatedData.processingOptions ?? {},
           requestId
         ).catch((error: unknown) => {
           logger.error(`[${requestId}] Critical error in document processing pipeline:`, error)
@@ -326,6 +331,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         } catch (_e) {
           // Silently fail
         }
+
+        captureServerEvent(
+          userId,
+          'knowledge_base_document_uploaded',
+          {
+            knowledge_base_id: knowledgeBaseId,
+            workspace_id: kbWorkspaceId ?? '',
+            document_count: 1,
+            upload_type: 'single',
+          },
+          {
+            ...(kbWorkspaceId ? { groups: { workspace: kbWorkspaceId } } : {}),
+            setOnce: { first_document_uploaded_at: new Date().toISOString() },
+          }
+        )
 
         recordAudit({
           workspaceId: accessCheck.knowledgeBase?.workspaceId ?? null,

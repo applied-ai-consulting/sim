@@ -9,6 +9,7 @@ import { AuditAction, AuditResourceType, recordAudit } from '@/lib/audit/log'
 import { getSession } from '@/lib/auth'
 import { decryptSecret, encryptSecret } from '@/lib/core/security/encryption'
 import { generateRequestId } from '@/lib/core/utils/request'
+import { captureServerEvent } from '@/lib/posthog/server'
 import { getUserEntityPermissions, getWorkspaceById } from '@/lib/workspaces/permissions/utils'
 
 const logger = createLogger('WorkspaceBYOKKeysAPI')
@@ -18,6 +19,7 @@ const VALID_PROVIDERS = [
   'anthropic',
   'google',
   'mistral',
+  'fireworks',
   'firecrawl',
   'exa',
   'serper',
@@ -200,6 +202,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     logger.info(`[${requestId}] Created BYOK key for ${providerId} in workspace ${workspaceId}`)
 
+    captureServerEvent(
+      userId,
+      'byok_key_added',
+      { workspace_id: workspaceId, provider_id: providerId },
+      {
+        groups: { workspace: workspaceId },
+        setOnce: { first_byok_key_added_at: new Date().toISOString() },
+      }
+    )
+
     recordAudit({
       workspaceId,
       actorId: userId,
@@ -270,6 +282,13 @@ export async function DELETE(
       )
 
     logger.info(`[${requestId}] Deleted BYOK key for ${providerId} from workspace ${workspaceId}`)
+
+    captureServerEvent(
+      userId,
+      'byok_key_removed',
+      { workspace_id: workspaceId, provider_id: providerId },
+      { groups: { workspace: workspaceId } }
+    )
 
     recordAudit({
       workspaceId,
