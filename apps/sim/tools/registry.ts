@@ -8,6 +8,7 @@ import {
   a2aSendMessageTool,
   a2aSetPushNotificationTool,
 } from '@/tools/a2a'
+import { agentBrowserExecuteTool } from '@/tools/agent_browser'
 import {
   agentmailCreateDraftTool,
   agentmailCreateInboxTool,
@@ -2716,6 +2717,7 @@ export const tools: Record<string, ToolConfig> = {
   a2a_resubscribe: a2aResubscribeTool,
   a2a_send_message: a2aSendMessageTool,
   a2a_set_push_notification: a2aSetPushNotificationTool,
+  agent_browser_execute: agentBrowserExecuteTool,
   agentmail_create_draft: agentmailCreateDraftTool,
   agentmail_create_inbox: agentmailCreateInboxTool,
   agentmail_delete_draft: agentmailDeleteDraftTool,

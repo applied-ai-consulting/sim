@@ -2065,6 +2065,27 @@ export function StagehandIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+export function AgentBrowserIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      {...props}
+      xmlns='http://www.w3.org/2000/svg'
+      viewBox='0 0 24 24'
+      fill='none'
+      stroke='currentColor'
+      strokeWidth='1.75'
+      strokeLinecap='round'
+      strokeLinejoin='round'
+    >
+      <rect x='3' y='4' width='18' height='14' rx='3' />
+      <path d='M8 20h8' />
+      <path d='M12 18v2' />
+      <path d='m8.5 9 2 2-2 2' />
+      <path d='M12.5 13h3' />
+    </svg>
+  )
+}
+
 export function BrandfetchIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg {...props} viewBox='0 0 29 31' fill='none' xmlns='http://www.w3.org/2000/svg'>
