@@ -24,8 +24,10 @@ import type {
   MothershipResource,
   MothershipResourceType,
 } from '@/app/workspace/[workspaceId]/home/types'
+import { useFolders } from '@/hooks/queries/folders'
 import { useKnowledgeBasesQuery } from '@/hooks/queries/kb/knowledge'
 import { useTablesList } from '@/hooks/queries/tables'
+import { useTasks } from '@/hooks/queries/tasks'
 import { useWorkflows } from '@/hooks/queries/workflows'
 import { useWorkspaceFiles } from '@/hooks/queries/workspace-files'
 
@@ -51,6 +53,8 @@ export function useAvailableResources(
   const { data: tables = [] } = useTablesList(workspaceId)
   const { data: files = [] } = useWorkspaceFiles(workspaceId)
   const { data: knowledgeBases } = useKnowledgeBasesQuery(workspaceId)
+  const { data: folders = [] } = useFolders(workspaceId)
+  const { data: tasks = [] } = useTasks(workspaceId)
 
   return useMemo(
     () => [
@@ -61,6 +65,14 @@ export function useAvailableResources(
           name: w.name,
           color: w.color,
           isOpen: existingKeys.has(`workflow:${w.id}`),
+        })),
+      },
+      {
+        type: 'folder' as const,
+        items: folders.map((f) => ({
+          id: f.id,
+          name: f.name,
+          isOpen: existingKeys.has(`folder:${f.id}`),
         })),
       },
       {
@@ -87,8 +99,16 @@ export function useAvailableResources(
           isOpen: existingKeys.has(`knowledgebase:${kb.id}`),
         })),
       },
+      {
+        type: 'task' as const,
+        items: tasks.map((t) => ({
+          id: t.id,
+          name: t.name,
+          isOpen: existingKeys.has(`task:${t.id}`),
+        })),
+      },
     ],
-    [workflows, tables, files, knowledgeBases, existingKeys]
+    [workflows, folders, tables, files, knowledgeBases, tasks, existingKeys]
   )
 }
 
@@ -206,7 +226,7 @@ export function AddResourceDropdown({
                 )
               })
             ) : (
-              <div className='px-2 py-[5px] text-center font-medium text-[var(--text-tertiary)] text-caption'>
+              <div className='px-2 py-1.5 text-center font-medium text-[var(--text-tertiary)] text-caption'>
                 No results
               </div>
             )

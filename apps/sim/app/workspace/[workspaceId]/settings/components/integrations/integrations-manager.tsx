@@ -54,6 +54,7 @@ import {
 } from '@/hooks/queries/oauth/oauth-connections'
 import { useWorkspacePermissionsQuery } from '@/hooks/queries/workspace'
 import { useOAuthReturnRouter } from '@/hooks/use-oauth-return'
+import { useSettingsDirtyStore } from '@/stores/settings/dirty/store'
 
 const logger = createLogger('IntegrationsManager')
 
@@ -61,6 +62,8 @@ const roleOptions = [
   { value: 'member', label: 'Member' },
   { value: 'admin', label: 'Admin' },
 ] as const
+
+const roleComboOptions = roleOptions.map((option) => ({ value: option.value, label: option.label }))
 
 export function IntegrationsManager() {
   const params = useParams()
@@ -244,12 +247,20 @@ export function IntegrationsManager() {
   }, [selectedCredential, selectedDisplayNameDraft])
 
   const isDetailsDirty = isDescriptionDirty || isDisplayNameDirty
-  const [isSavingDetails, setIsSavingDetails] = useState(false)
+
+  const setNavGuardDirty = useSettingsDirtyStore((s) => s.setDirty)
+  const resetNavGuard = useSettingsDirtyStore((s) => s.reset)
+
+  useEffect(() => {
+    setNavGuardDirty(isDetailsDirty)
+  }, [isDetailsDirty, setNavGuardDirty])
+
+  useEffect(() => () => resetNavGuard(), [resetNavGuard])
 
   const handleSaveDetails = async () => {
-    if (!selectedCredential || !isSelectedAdmin || !isDetailsDirty) return
+    if (!selectedCredential || !isSelectedAdmin || !isDetailsDirty || updateCredential.isPending)
+      return
     setDetailsError(null)
-    setIsSavingDetails(true)
 
     try {
       if (isDisplayNameDirty || isDescriptionDirty) {
@@ -261,26 +272,22 @@ export function IntegrationsManager() {
         if (isDisplayNameDirty) setSelectedDisplayNameDraft((v) => v.trim())
         if (isDescriptionDirty) setSelectedDescriptionDraft((v) => v.trim())
       }
-
-      await refetchCredentials()
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to save changes'
       setDetailsError(message)
       logger.error('Failed to save credential details', error)
-    } finally {
-      setIsSavingDetails(false)
     }
   }
 
   const handleBackAttempt = useCallback(() => {
-    if (isDetailsDirty && !isSavingDetails) {
+    if (isDetailsDirty && !updateCredential.isPending) {
       setShowUnsavedChangesAlert(true)
     } else {
       setSelectedCredentialId(null)
       setSelectedDescriptionDraft('')
       setSelectedDisplayNameDraft('')
     }
-  }, [isDetailsDirty, isSavingDetails])
+  }, [isDetailsDirty, updateCredential.isPending])
 
   const handleDiscardChanges = useCallback(() => {
     setShowUnsavedChangesAlert(false)
@@ -1129,7 +1136,7 @@ export function IntegrationsManager() {
             <span className='font-medium text-[var(--text-primary)]'>
               {credentialToDelete?.displayName}
             </span>
-            ? <span className='text-[var(--text-error)]'>This action cannot be undone.</span>
+            ? This action cannot be undone.
           </p>
           {deleteError && (
             <div className='mt-3 rounded-lg border border-red-500/50 bg-red-50 p-3 dark:bg-red-950/30'>
@@ -1315,42 +1322,32 @@ export function IntegrationsManager() {
                           </div>
                         </div>
 
+                        <Combobox
+                          options={roleComboOptions}
+                          value={
+                            roleOptions.find((option) => option.value === member.role)?.label || ''
+                          }
+                          selectedValue={member.role}
+                          onChange={(value) =>
+                            handleChangeMemberRole(member.userId, value as WorkspaceCredentialRole)
+                          }
+                          placeholder='Role'
+                          disabled={
+                            !isSelectedAdmin || (member.role === 'admin' && adminMemberCount <= 1)
+                          }
+                          size='sm'
+                        />
                         {isSelectedAdmin ? (
-                          <>
-                            <Combobox
-                              options={roleOptions.map((option) => ({
-                                value: option.value,
-                                label: option.label,
-                              }))}
-                              value={
-                                roleOptions.find((option) => option.value === member.role)?.label ||
-                                ''
-                              }
-                              selectedValue={member.role}
-                              onChange={(value) =>
-                                handleChangeMemberRole(
-                                  member.userId,
-                                  value as WorkspaceCredentialRole
-                                )
-                              }
-                              placeholder='Role'
-                              disabled={member.role === 'admin' && adminMemberCount <= 1}
-                              size='sm'
-                            />
-                            <Button
-                              variant='ghost'
-                              onClick={() => handleRemoveMember(member.userId)}
-                              disabled={member.role === 'admin' && adminMemberCount <= 1}
-                              className='w-full justify-end'
-                            >
-                              Remove
-                            </Button>
-                          </>
+                          <Button
+                            variant='ghost'
+                            onClick={() => handleRemoveMember(member.userId)}
+                            disabled={member.role === 'admin' && adminMemberCount <= 1}
+                            className='w-full justify-end'
+                          >
+                            Remove
+                          </Button>
                         ) : (
-                          <>
-                            <Badge variant='gray-secondary'>{member.role}</Badge>
-                            <div />
-                          </>
+                          <div />
                         )}
                       </div>
                     ))}
@@ -1370,10 +1367,7 @@ export function IntegrationsManager() {
                           size='sm'
                         />
                         <Combobox
-                          options={roleOptions.map((option) => ({
-                            value: option.value,
-                            label: option.label,
-                          }))}
+                          options={roleComboOptions}
                           value={
                             roleOptions.find((option) => option.value === memberRole)?.label || ''
                           }
@@ -1441,9 +1435,9 @@ export function IntegrationsManager() {
                 <Button
                   variant='primary'
                   onClick={handleSaveDetails}
-                  disabled={!isDetailsDirty || isSavingDetails}
+                  disabled={!isDetailsDirty || updateCredential.isPending}
                 >
-                  {isSavingDetails ? 'Saving...' : 'Save'}
+                  {updateCredential.isPending ? 'Saving...' : 'Save'}
                 </Button>
               )}
             </div>

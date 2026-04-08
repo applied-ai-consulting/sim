@@ -10,6 +10,7 @@ import {
 import { Button, Tooltip } from '@/components/emcn'
 import { Columns3, Eye, PanelLeft, Pencil } from '@/components/emcn/icons'
 import { isEphemeralResource } from '@/lib/copilot/resource-extraction'
+import { SIM_RESOURCE_DRAG_TYPE } from '@/lib/copilot/resource-types'
 import { cn } from '@/lib/core/utils/cn'
 import type { PreviewMode } from '@/app/workspace/[workspaceId]/files/components/file-viewer'
 import { AddResourceDropdown } from '@/app/workspace/[workspaceId]/home/components/mothership-view/components/add-resource-dropdown'
@@ -23,6 +24,7 @@ import type {
   MothershipResource,
   MothershipResourceType,
 } from '@/app/workspace/[workspaceId]/home/types'
+import { useFolders } from '@/hooks/queries/folders'
 import { useKnowledgeBasesQuery } from '@/hooks/queries/kb/knowledge'
 import { useTablesList } from '@/hooks/queries/tables'
 import {
@@ -57,6 +59,7 @@ function useResourceNameLookup(workspaceId: string): Map<string, string> {
   const { data: tables = [] } = useTablesList(workspaceId)
   const { data: files = [] } = useWorkspaceFiles(workspaceId)
   const { data: knowledgeBases } = useKnowledgeBasesQuery(workspaceId)
+  const { data: folders = [] } = useFolders(workspaceId)
 
   return useMemo(() => {
     const map = new Map<string, string>()
@@ -64,8 +67,9 @@ function useResourceNameLookup(workspaceId: string): Map<string, string> {
     for (const t of tables) map.set(`table:${t.id}`, t.name)
     for (const f of files) map.set(`file:${f.id}`, f.name)
     for (const kb of knowledgeBases ?? []) map.set(`knowledgebase:${kb.id}`, kb.name)
+    for (const folder of folders) map.set(`folder:${folder.id}`, folder.name)
     return map
-  }, [workflows, tables, files, knowledgeBases])
+  }, [workflows, tables, files, knowledgeBases, folders])
 }
 
 interface ResourceTabsProps {
@@ -161,7 +165,7 @@ export function ResourceTabs({
       const resource = resources[idx]
       if (resource) {
         e.dataTransfer.setData(
-          'application/x-sim-resource',
+          SIM_RESOURCE_DRAG_TYPE,
           JSON.stringify({ type: resource.type, id: resource.id, title: resource.title })
         )
       }

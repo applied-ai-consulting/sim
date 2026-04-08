@@ -13,6 +13,7 @@ import { ApolloBlock } from '@/blocks/blocks/apollo'
 import { ArxivBlock } from '@/blocks/blocks/arxiv'
 import { AsanaBlock } from '@/blocks/blocks/asana'
 import { AshbyBlock } from '@/blocks/blocks/ashby'
+import { AthenaBlock } from '@/blocks/blocks/athena'
 import { AttioBlock } from '@/blocks/blocks/attio'
 import { BoxBlock } from '@/blocks/blocks/box'
 import { BrandfetchBlock } from '@/blocks/blocks/brandfetch'
@@ -24,10 +25,13 @@ import { CirclebackBlock } from '@/blocks/blocks/circleback'
 import { ClayBlock } from '@/blocks/blocks/clay'
 import { ClerkBlock } from '@/blocks/blocks/clerk'
 import { CloudflareBlock } from '@/blocks/blocks/cloudflare'
+import { CloudFormationBlock } from '@/blocks/blocks/cloudformation'
+import { CloudWatchBlock } from '@/blocks/blocks/cloudwatch'
 import { ConditionBlock } from '@/blocks/blocks/condition'
 import { ConfluenceBlock, ConfluenceV2Block } from '@/blocks/blocks/confluence'
 import { CredentialBlock } from '@/blocks/blocks/credential'
 import { CursorBlock, CursorV2Block } from '@/blocks/blocks/cursor'
+import { DagsterBlock } from '@/blocks/blocks/dagster'
 import { DatabricksBlock } from '@/blocks/blocks/databricks'
 import { DatadogBlock } from '@/blocks/blocks/datadog'
 import { DevinBlock } from '@/blocks/blocks/devin'
@@ -100,7 +104,7 @@ import { KnowledgeBlock } from '@/blocks/blocks/knowledge'
 import { LangsmithBlock } from '@/blocks/blocks/langsmith'
 import { LaunchDarklyBlock } from '@/blocks/blocks/launchdarkly'
 import { LemlistBlock } from '@/blocks/blocks/lemlist'
-import { LinearBlock } from '@/blocks/blocks/linear'
+import { LinearBlock, LinearV2Block } from '@/blocks/blocks/linear'
 import { LinkedInBlock } from '@/blocks/blocks/linkedin'
 import { LinkupBlock } from '@/blocks/blocks/linkup'
 import { LoopsBlock } from '@/blocks/blocks/loops'
@@ -169,6 +173,7 @@ import { SftpBlock } from '@/blocks/blocks/sftp'
 import { SharepointBlock } from '@/blocks/blocks/sharepoint'
 import { ShopifyBlock } from '@/blocks/blocks/shopify'
 import { SimilarwebBlock } from '@/blocks/blocks/similarweb'
+import { SixtyfourBlock } from '@/blocks/blocks/sixtyfour'
 import { SlackBlock } from '@/blocks/blocks/slack'
 import { SmtpBlock } from '@/blocks/blocks/smtp'
 import { SpotifyBlock } from '@/blocks/blocks/spotify'
@@ -232,6 +237,7 @@ export const registry: Record<string, BlockConfig> = {
   arxiv: ArxivBlock,
   asana: AsanaBlock,
   ashby: AshbyBlock,
+  athena: AthenaBlock,
   attio: AttioBlock,
   brandfetch: BrandfetchBlock,
   box: BoxBlock,
@@ -241,6 +247,8 @@ export const registry: Record<string, BlockConfig> = {
   chat_trigger: ChatTriggerBlock,
   circleback: CirclebackBlock,
   cloudflare: CloudflareBlock,
+  cloudformation: CloudFormationBlock,
+  cloudwatch: CloudWatchBlock,
   clay: ClayBlock,
   clerk: ClerkBlock,
   condition: ConditionBlock,
@@ -249,6 +257,7 @@ export const registry: Record<string, BlockConfig> = {
   confluence_v2: ConfluenceV2Block,
   cursor: CursorBlock,
   cursor_v2: CursorV2Block,
+  dagster: DagsterBlock,
   databricks: DatabricksBlock,
   datadog: DatadogBlock,
   devin: DevinBlock,
@@ -333,6 +342,7 @@ export const registry: Record<string, BlockConfig> = {
   launchdarkly: LaunchDarklyBlock,
   lemlist: LemlistBlock,
   linear: LinearBlock,
+  linear_v2: LinearV2Block,
   linkedin: LinkedInBlock,
   linkup: LinkupBlock,
   loops: LoopsBlock,
@@ -403,6 +413,7 @@ export const registry: Record<string, BlockConfig> = {
   sharepoint: SharepointBlock,
   shopify: ShopifyBlock,
   similarweb: SimilarwebBlock,
+  sixtyfour: SixtyfourBlock,
   slack: SlackBlock,
   smtp: SmtpBlock,
   spotify: SpotifyBlock,
