@@ -198,6 +198,7 @@ USER nextjs
 EXPOSE 3000
 ENV PORT=3000 \
     HOSTNAME="0.0.0.0" \
-    HOME=/home/nextjs
+    HOME=/home/nextjs \
+    AGENT_BROWSER_CLI_PATH=/usr/local/bin/agent-browser
 
 CMD ["bun", "apps/sim/server.js"]
