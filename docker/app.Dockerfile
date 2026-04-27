@@ -3,13 +3,55 @@
 # ========================================
 FROM oven/bun:1.3.11-slim AS base
 
-# Install Node.js 22 and common dependencies once in base stage
+# Install Node.js 22, browser runtime libraries, and common dependencies once in base stage
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv make g++ curl ca-certificates bash ffmpeg \
+    fonts-dejavu-core \
+    libcairo-gobject2 \
+    libcairo2 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libfontconfig1 \
+    libfreetype6 \
+    libgbm1 \
+    libgdk-pixbuf-2.0-0 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb-shm0 \
+    libxcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxi6 \
+    libxkbcommon0 \
+    libxrandr2 \
+    libxrender1 \
+    libxshmfence1 \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libatspi2.0-0 \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN --mount=type=cache,id=bun-cache,target=/root/.bun/install/cache \
+    bun install -g agent-browser@0.23.3 && \
+    install -d /opt/sim-global-tools && \
+    cp -a /root/.bun/install/global/node_modules /opt/sim-global-tools/ && \
+    ln -sf /opt/sim-global-tools/node_modules/agent-browser/bin/agent-browser.js /usr/local/bin/agent-browser && \
+    agent-browser --version
 
 # ========================================
 # Dependencies Stage: Install Dependencies
@@ -92,13 +134,14 @@ RUN bun run build
 
 FROM base AS runner
 WORKDIR /app
+ARG TARGETARCH
 
 # Node.js 22, Python, ffmpeg, etc. are already installed in base stage
 ENV NODE_ENV=production
 
 # Create non-root user and group
 RUN groupadd -g 1001 nodejs && \
-    useradd -u 1001 -g nodejs nextjs
+    useradd -m -d /home/nextjs -u 1001 -g nodejs nextjs
 
 # Copy application artifacts from builder
 COPY --from=builder --chown=nextjs:nodejs /app/apps/sim/public ./apps/sim/public
@@ -135,11 +178,26 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN mkdir -p apps/sim/.next/cache && \
     chown -R nextjs:nodejs apps/sim/.next/cache
 
+RUN mkdir -p /home/nextjs/.agent-browser /home/nextjs/.cache /opt/sim-agent-browser && \
+    if [ "${TARGETARCH}" = "arm64" ]; then \
+      apt-get update && \
+      apt-get install -y --no-install-recommends chromium && \
+      rm -rf /var/lib/apt/lists/* && \
+      printf '{\n  "executablePath": "/usr/bin/chromium"\n}\n' > /home/nextjs/.agent-browser/config.json; \
+    else \
+      HOME=/home/nextjs agent-browser install && \
+      if [ -d /home/nextjs/.agent-browser/browsers ]; then \
+        cp -a /home/nextjs/.agent-browser/browsers /opt/sim-agent-browser/; \
+      fi; \
+    fi && \
+    chown -R nextjs:nodejs /home/nextjs /opt/sim-agent-browser
+
 # Switch to non-root user
 USER nextjs
 
 EXPOSE 3000
 ENV PORT=3000 \
-    HOSTNAME="0.0.0.0"
+    HOSTNAME="0.0.0.0" \
+    HOME=/home/nextjs
 
 CMD ["bun", "apps/sim/server.js"]
